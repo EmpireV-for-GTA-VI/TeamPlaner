@@ -1,7 +1,7 @@
 {
   "name": "teamplaner-backend",
   "version": "1.0.0",
-  "description": "TeamPlaner Backend mit 3-Säulen-Architektur (PostgreSQL, Redis, SpiceDB)",
+  "description": "TeamPlaner Backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,17 +9,6 @@
     "db:migrate": "node scripts/migrate.js",
     "spicedb:upload-schema": "node scripts/upload-spicedb-schema.js"
   },
-  "keywords": [
-    "teamplaner",
-    "nodejs",
-    "express",
-    "postgresql",
-    "redis",
-    "spicedb",
-    "authentication"
-  ],
-  "author": "EmpireV-for-GTA-VI",
-  "license": "MIT",
   "dependencies": {
     "@authzed/authzed-node": "^1.1.0",
     "bcryptjs": "^2.4.3",
@@ -36,7 +25,6 @@
     "nodemon": "^3.0.2"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
+    "node": ">=18.0.0"
   }
 }
