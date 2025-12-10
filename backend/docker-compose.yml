@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # PostgreSQL - Single Source of Truth (SSOT)
+  # ============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: teamplaner_postgres
+    environment:
+      POSTGRES_DB: teamplaner
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - teamplaner_network
+
+  # ============================================================================
+  # Redis - Session & Cache Layer
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: teamplaner_redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - teamplaner_network
+
+  # ============================================================================
+  # SpiceDB - Authorization Layer
+  # ============================================================================
+  spicedb-migrate:
+    image: authzed/spicedb:latest
+    container_name: teamplaner_spicedb_migrate
+    command: migrate head --datastore-engine postgres --datastore-conn-uri "postgres://postgres:postgres123@postgres:5432/spicedb?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - teamplaner_network
+    restart: on-failure
+
+  spicedb:
+    image: authzed/spicedb:latest
+    container_name: teamplaner_spicedb
+    command: serve --grpc-preshared-key "dev-token-change-in-production" --datastore-engine postgres --datastore-conn-uri "postgres://postgres:postgres123@postgres:5432/spicedb?sslmode=disable" --http-enabled
+    ports:
+      - "50051:50051" # gRPC
+      - "8443:8443"   # HTTP Dashboard
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spicedb-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - teamplaner_network
+
+  # ============================================================================
+  # Backend API Server
+  # ============================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: teamplaner_backend
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: teamplaner
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      REDIS_URL: redis://redis:6379
+      SPICEDB_ENDPOINT: spicedb:50051
+      SPICEDB_TOKEN: dev-token-change-in-production
+      CORS_ORIGIN: http://localhost:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      spicedb:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - teamplaner_network
+    restart: unless-stopped
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  teamplaner_network:
+    driver: bridge

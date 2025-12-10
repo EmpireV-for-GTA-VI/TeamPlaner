@@ -1,0 +1,171 @@
+/**
+ * ============================================================================
+ * SpiceDB Schema Definition für TeamPlaner
+ * Relationship Based Access Control (ReBAC)
+ * ============================================================================
+ * 
+ * Dieses Schema definiert NUR Relationen und Berechtigungen.
+ * Keine Attribute wie E-Mail oder Namen!
+ * 
+ * Hierarchie:
+ * Organization -> Team -> Project -> Board -> Card
+ * 
+ * SpiceDB speichert Tuples wie:
+ * - "user:uuid#member@organization:uuid"
+ * - "user:uuid#admin@team:uuid"
+ */
+
+// ============================================================================
+// USER Definition
+// ============================================================================
+definition user {}
+
+// ============================================================================
+// ORGANIZATION Definition
+// ============================================================================
+definition organization {
+    // Relationen
+    relation owner: user
+    relation admin: user
+    relation member: user
+    
+    // Berechtigungen
+    permission create_team = owner + admin
+    permission view = owner + admin + member
+    permission manage_members = owner + admin
+    permission delete = owner
+    permission update = owner + admin
+}
+
+// ============================================================================
+// TEAM Definition
+// ============================================================================
+definition team {
+    // Relationen
+    relation parent_organization: organization
+    relation owner: user
+    relation admin: user
+    relation member: user
+    
+    // Berechtigungen
+    permission create_project = owner + admin
+    permission view = owner + admin + member + parent_organization->member
+    permission manage_members = owner + admin
+    permission delete = owner + parent_organization->admin
+    permission update = owner + admin
+    permission view_projects = view
+}
+
+// ============================================================================
+// PROJECT Definition
+// ============================================================================
+definition project {
+    // Relationen
+    relation parent_team: team
+    relation owner: user
+    relation admin: user
+    relation member: user
+    relation viewer: user
+    
+    // Berechtigungen
+    permission create_board = owner + admin
+    permission view = owner + admin + member + viewer + parent_team->member
+    permission manage_members = owner + admin
+    permission delete = owner + parent_team->admin
+    permission update = owner + admin
+    permission archive = owner + admin
+}
+
+// ============================================================================
+// BOARD Definition (Kanban-Board)
+// ============================================================================
+definition board {
+    // Relationen
+    relation parent_project: project
+    relation owner: user
+    relation editor: user
+    
+    // Berechtigungen
+    permission create_card = owner + editor + parent_project->admin
+    permission view = owner + editor + parent_project->view
+    permission delete = owner + parent_project->admin
+    permission update = owner + editor
+    permission reorder = owner + editor
+}
+
+// ============================================================================
+// CARD Definition (Task/Aufgabe)
+// ============================================================================
+definition card {
+    // Relationen
+    relation parent_board: board
+    relation owner: user
+    relation assignee: user
+    relation editor: user
+    
+    // Berechtigungen
+    permission view = owner + assignee + editor + parent_board->view
+    permission edit = owner + assignee + editor + parent_board->editor
+    permission delete = owner + parent_board->owner
+    permission assign = owner + parent_board->editor
+    permission comment = view
+    permission move = edit
+}
+
+// ============================================================================
+// SETTING Definition (für Einstellungs-Berechtigungen)
+// ============================================================================
+definition setting {
+    // Relationen
+    relation owner: user | organization | team | project
+    relation viewer: user
+    
+    // Berechtigungen
+    permission read = viewer
+    permission write = owner
+}
+
+/**
+ * ============================================================================
+ * Beispiel-Tuples (zur Illustration)
+ * ============================================================================
+ * 
+ * Diese werden über die SpiceDB API zur Laufzeit geschrieben:
+ * 
+ * // User ist Owner einer Organisation
+ * organization:org-uuid#owner@user:user-uuid
+ * 
+ * // User ist Admin in einem Team
+ * team:team-uuid#admin@user:user-uuid
+ * 
+ * // Team gehört zu einer Organisation
+ * team:team-uuid#parent_organization@organization:org-uuid
+ * 
+ * // User ist Member eines Projects
+ * project:proj-uuid#member@user:user-uuid
+ * 
+ * // Project gehört zu einem Team
+ * project:proj-uuid#parent_team@team:team-uuid
+ * 
+ * // User ist Assignee einer Card
+ * card:card-uuid#assignee@user:user-uuid
+ * 
+ * // Card gehört zu einem Board
+ * card:card-uuid#parent_board@board:board-uuid
+ * 
+ * ============================================================================
+ * Permission Checks (Beispiele)
+ * ============================================================================
+ * 
+ * // Kann user-123 das Team team-456 sehen?
+ * CheckPermission(user:user-123, "view", team:team-456)
+ * 
+ * // Kann user-123 ein neues Projekt in team-456 erstellen?
+ * CheckPermission(user:user-123, "create_project", team:team-456)
+ * 
+ * // Kann user-123 die Card card-789 bearbeiten?
+ * CheckPermission(user:user-123, "edit", card:card-789)
+ * 
+ * // Kann user-123 user-999 einem Project zuweisen?
+ * CheckPermission(user:user-123, "manage_members", project:proj-456)
+ */
