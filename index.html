@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vue Sample Page</title>
+    
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link rel="stylesheet" href="style.css" />
+    
+    <!-- Vue 3 und Vue Router via Cloudflare CDN (Global Build) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.5.22/vue.global.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue-router/4.5.0/vue-router.global.min.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <!-- Page Components -->
+    <script src="pages/Home.js"></script>
+    <script src="pages/About.js"></script>
+    <script src="pages/Contact.js"></script>
+    <script src="pages/Documentation.js"></script>
+    
+    <!-- Documentation Sub-pages -->
+    <script src="pages/documentations/development.js"></script>
+    <script src="pages/documentations/marketing.js"></script>
+    <script src="pages/documentations/support.js"></script>
+    
+    <!-- Task Planner Component -->
+    <script src="pages/TaskPlanner.js"></script>
+    
+    <!-- Main app -->
+    <script src="app.js"></script>
+  </body>
+</html>
