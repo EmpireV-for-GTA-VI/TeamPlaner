@@ -4,6 +4,7 @@
 -- ============================================================================
 
 -- Extensions
+CREATE DATABASE spicedb;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 

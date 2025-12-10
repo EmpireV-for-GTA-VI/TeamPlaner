@@ -1,17 +1,10 @@
 /**
  * ============================================================================
- * SpiceDB Service - Der "Wächter"
+ * SpiceDB Service - Der "Wächter" (Updated for SDK v1.0+)
  * ============================================================================
- * 
- * Verantwortlichkeiten:
- * - Zentrale Berechtigungsprüfung (ReBAC)
- * - Relationship Management
- * - Fail-Closed Strategie bei Fehlern
- * 
- * WICHTIG: Bei Verbindungsproblemen wird der Zugriff VERWEIGERT!
  */
 
-const { v1 } = require('@authzed/authzed-node');
+const { AuthzedClient, ClientSecurity, v1 } = require('@authzed/authzed-node');
 
 class SpiceDBService {
     constructor() {
@@ -28,11 +21,12 @@ class SpiceDBService {
             const endpoint = process.env.SPICEDB_ENDPOINT || 'localhost:50051';
             const token = process.env.SPICEDB_TOKEN || 'insecure-token';
 
-            this.client = v1.NewClient(
-                token,
-                endpoint,
-                v1.ClientSecurity.INSECURE_PLAINTEXT_CREDENTIALS
-            );
+            // Neue Syntax für authzed-node v1+
+            this.client = new AuthzedClient({
+                token: token,
+                endpoint: endpoint,
+                security: ClientSecurity.INSECURE_PLAINTEXT_CREDENTIALS
+            });
 
             // Test-Verbindung
             await this.healthCheck();
@@ -50,7 +44,6 @@ class SpiceDBService {
      */
     async healthCheck() {
         try {
-            // Einfacher Permission Check als Health Check
             const request = v1.CheckPermissionRequest.create({
                 consistency: { requirement: { oneofKind: 'fullyConsistent', fullyConsistent: true } },
                 resource: v1.ObjectReference.create({
@@ -66,9 +59,14 @@ class SpiceDBService {
                 })
             });
 
-            await this.client.permissions.checkPermission(request);
+            // Hinweis: In v1 ist .permissions. nicht mehr nötig, Methoden sind direkt am Client
+            await this.client.checkPermission(request);
             return true;
         } catch (error) {
+            // Ignoriere Fehler, wenn es nur am fehlenden Schema liegt (beim allerersten Start)
+            if (error.message && error.message.includes('object definition not found')) {
+                return true; 
+            }
             console.error('SpiceDB health check failed:', error);
             return false;
         }
@@ -78,15 +76,6 @@ class SpiceDBService {
     // PERMISSION CHECKS
     // ========================================================================
 
-    /**
-     * Prüft ob ein User eine bestimmte Permission auf eine Resource hat
-     * @param {string} userId - User UUID
-     * @param {string} permission - z.B. 'view', 'edit', 'delete'
-     * @param {string} resourceType - z.B. 'organization', 'team', 'project'
-     * @param {string} resourceId - Resource UUID
-     * @returns {boolean} Hat Permission oder nicht
-     * @throws {Error} Bei Verbindungsproblemen (Fail-Closed)
-     */
     async checkPermission(userId, permission, resourceType, resourceId) {
         if (!this.isConnected && this.failClosed) {
             console.error('SpiceDB not connected - FAIL CLOSED');
@@ -95,12 +84,7 @@ class SpiceDBService {
 
         try {
             const request = v1.CheckPermissionRequest.create({
-                consistency: { 
-                    requirement: { 
-                        oneofKind: 'fullyConsistent', 
-                        fullyConsistent: true 
-                    } 
-                },
+                consistency: { requirement: { oneofKind: 'fullyConsistent', fullyConsistent: true } },
                 resource: v1.ObjectReference.create({
                     objectType: resourceType,
                     objectId: resourceId
@@ -114,7 +98,7 @@ class SpiceDBService {
                 })
             });
 
-            const response = await this.client.permissions.checkPermission(request);
+            const response = await this.client.checkPermission(request);
             const hasPermission = response.permissionship === v1.CheckPermissionResponse_Permissionship.HAS_PERMISSION;
 
             console.log(`Permission Check: user:${userId} ${permission} ${resourceType}:${resourceId} = ${hasPermission}`);
@@ -122,41 +106,20 @@ class SpiceDBService {
 
         } catch (error) {
             console.error('SpiceDB permission check failed:', error);
-            
-            if (this.failClosed) {
-                throw new Error('Permission check failed - access denied');
-            }
-            
+            if (this.failClosed) throw new Error('Permission check failed - access denied');
             return false;
         }
     }
 
-    /**
-     * Batch Permission Check für mehrere Ressourcen
-     * @param {string} userId - User UUID
-     * @param {string} permission - z.B. 'view'
-     * @param {Array} resources - [{ type: 'team', id: 'uuid' }, ...]
-     * @returns {Map} Map mit resourceId -> boolean
-     */
     async checkPermissions(userId, permission, resources) {
         const results = new Map();
-
-        // Parallel ausführen
         const promises = resources.map(async (resource) => {
-            const hasPermission = await this.checkPermission(
-                userId, 
-                permission, 
-                resource.type, 
-                resource.id
-            );
+            const hasPermission = await this.checkPermission(userId, permission, resource.type, resource.id);
             return { id: resource.id, hasPermission };
         });
 
         const responses = await Promise.all(promises);
-        responses.forEach(({ id, hasPermission }) => {
-            results.set(id, hasPermission);
-        });
-
+        responses.forEach(({ id, hasPermission }) => results.set(id, hasPermission));
         return results;
     }
 
@@ -164,14 +127,6 @@ class SpiceDBService {
     // RELATIONSHIP MANAGEMENT
     // ========================================================================
 
-    /**
-     * Erstellt eine Relation (Tuple)
-     * @param {string} resourceType - z.B. 'organization', 'team'
-     * @param {string} resourceId - Resource UUID
-     * @param {string} relation - z.B. 'admin', 'member', 'owner'
-     * @param {string} subjectType - z.B. 'user', 'team'
-     * @param {string} subjectId - Subject UUID
-     */
     async createRelationship(resourceType, resourceId, relation, subjectType, subjectId) {
         try {
             const request = v1.WriteRelationshipsRequest.create({
@@ -195,23 +150,14 @@ class SpiceDBService {
                 ]
             });
 
-            await this.client.permissions.writeRelationships(request);
+            await this.client.writeRelationships(request);
             console.log(`Relationship created: ${subjectType}:${subjectId}#${relation}@${resourceType}:${resourceId}`);
-            
         } catch (error) {
             console.error('Failed to create relationship:', error);
             throw error;
         }
     }
 
-    /**
-     * Löscht eine Relation
-     * @param {string} resourceType - z.B. 'organization', 'team'
-     * @param {string} resourceId - Resource UUID
-     * @param {string} relation - z.B. 'admin', 'member'
-     * @param {string} subjectType - z.B. 'user'
-     * @param {string} subjectId - Subject UUID
-     */
     async deleteRelationship(resourceType, resourceId, relation, subjectType, subjectId) {
         try {
             const request = v1.WriteRelationshipsRequest.create({
@@ -235,45 +181,30 @@ class SpiceDBService {
                 ]
             });
 
-            await this.client.permissions.writeRelationships(request);
+            await this.client.writeRelationships(request);
             console.log(`Relationship deleted: ${subjectType}:${subjectId}#${relation}@${resourceType}:${resourceId}`);
-            
         } catch (error) {
             console.error('Failed to delete relationship:', error);
             throw error;
         }
     }
 
-    /**
-     * Liest alle Relationen für eine Resource
-     * @param {string} resourceType - z.B. 'team'
-     * @param {string} resourceId - Resource UUID
-     * @param {string} relation - Optional: Filtert nach Relation
-     * @returns {Array} Liste von Relationships
-     */
     async readRelationships(resourceType, resourceId, relation = null) {
         try {
             const filter = {
                 resourceType: resourceType,
                 optionalResourceId: resourceId
             };
-
-            if (relation) {
-                filter.optionalRelation = relation;
-            }
+            if (relation) filter.optionalRelation = relation;
 
             const request = v1.ReadRelationshipsRequest.create({
-                consistency: { 
-                    requirement: { 
-                        oneofKind: 'fullyConsistent', 
-                        fullyConsistent: true 
-                    } 
-                },
+                consistency: { requirement: { oneofKind: 'fullyConsistent', fullyConsistent: true } },
                 relationshipFilter: filter
             });
 
             const relationships = [];
-            const stream = this.client.permissions.readRelationships(request);
+            // readRelationships gibt einen Async-Stream zurück
+            const stream = this.client.readRelationships(request);
 
             for await (const response of stream) {
                 relationships.push({
@@ -282,31 +213,17 @@ class SpiceDBService {
                     subject: `${response.relationship.subject.object.objectType}:${response.relationship.subject.object.objectId}`
                 });
             }
-
             return relationships;
-
         } catch (error) {
             console.error('Failed to read relationships:', error);
             throw error;
         }
     }
 
-    /**
-     * Findet alle Ressourcen, auf die ein User eine Permission hat
-     * @param {string} userId - User UUID
-     * @param {string} permission - z.B. 'view'
-     * @param {string} resourceType - z.B. 'team', 'project'
-     * @returns {Array} Liste von Resource IDs
-     */
     async lookupResources(userId, permission, resourceType) {
         try {
             const request = v1.LookupResourcesRequest.create({
-                consistency: { 
-                    requirement: { 
-                        oneofKind: 'fullyConsistent', 
-                        fullyConsistent: true 
-                    } 
-                },
+                consistency: { requirement: { oneofKind: 'fullyConsistent', fullyConsistent: true } },
                 resourceObjectType: resourceType,
                 permission: permission,
                 subject: v1.SubjectReference.create({
@@ -318,100 +235,58 @@ class SpiceDBService {
             });
 
             const resourceIds = [];
-            const stream = this.client.permissions.lookupResources(request);
+            const stream = this.client.lookupResources(request);
 
             for await (const response of stream) {
                 resourceIds.push(response.resourceObjectId);
             }
-
             console.log(`Lookup: user:${userId} can ${permission} ${resourceIds.length} ${resourceType}(s)`);
             return resourceIds;
-
         } catch (error) {
             console.error('Failed to lookup resources:', error);
             throw error;
         }
     }
 
-    // ========================================================================
-    // HELPER METHODEN für gängige Szenarien
-    // ========================================================================
-
-    /**
-     * Macht einen User zum Admin einer Organisation
-     */
+    // Helper Methoden bleiben identisch
     async makeOrganizationAdmin(userId, organizationId) {
         await this.createRelationship('organization', organizationId, 'admin', 'user', userId);
     }
-
-    /**
-     * Fügt einen User als Member zu einem Team hinzu
-     */
     async addTeamMember(userId, teamId) {
         await this.createRelationship('team', teamId, 'member', 'user', userId);
     }
-
-    /**
-     * Verbindet ein Team mit einer Organisation (Hierarchie)
-     */
     async linkTeamToOrganization(teamId, organizationId) {
         await this.createRelationship('team', teamId, 'parent_organization', 'organization', organizationId);
     }
-
-    /**
-     * Verbindet ein Project mit einem Team (Hierarchie)
-     */
     async linkProjectToTeam(projectId, teamId) {
         await this.createRelationship('project', projectId, 'parent_team', 'team', teamId);
     }
-
-    /**
-     * Verbindet ein Board mit einem Project (Hierarchie)
-     */
     async linkBoardToProject(boardId, projectId) {
         await this.createRelationship('board', boardId, 'parent_project', 'project', projectId);
     }
-
-    /**
-     * Verbindet eine Card mit einem Board (Hierarchie)
-     */
     async linkCardToBoard(cardId, boardId) {
         await this.createRelationship('card', cardId, 'parent_board', 'board', boardId);
     }
-
-    /**
-     * Entfernt alle Berechtigungen für eine Resource (z.B. beim Löschen)
-     */
     async deleteAllRelationshipsForResource(resourceType, resourceId) {
         try {
             const relationships = await this.readRelationships(resourceType, resourceId);
-            
             const updates = relationships.map(rel => {
                 const [subjectType, subjectId] = rel.subject.split(':');
                 return v1.RelationshipUpdate.create({
                     operation: v1.RelationshipUpdate_Operation.DELETE,
                     relationship: v1.Relationship.create({
-                        resource: v1.ObjectReference.create({
-                            objectType: resourceType,
-                            objectId: resourceId
-                        }),
+                        resource: v1.ObjectReference.create({ objectType: resourceType, objectId: resourceId }),
                         relation: rel.relation,
-                        subject: v1.SubjectReference.create({
-                            object: v1.ObjectReference.create({
-                                objectType: subjectType,
-                                objectId: subjectId
-                            })
-                        })
+                        subject: v1.SubjectReference.create({ object: v1.ObjectReference.create({ objectType: subjectType, objectId: subjectId }) })
                     })
                 });
             });
 
             if (updates.length > 0) {
                 const request = v1.WriteRelationshipsRequest.create({ updates });
-                await this.client.permissions.writeRelationships(request);
+                await this.client.writeRelationships(request);
                 console.log(`Deleted ${updates.length} relationships for ${resourceType}:${resourceId}`);
             }
-
         } catch (error) {
             console.error('Failed to delete all relationships:', error);
             throw error;
@@ -419,17 +294,10 @@ class SpiceDBService {
     }
 }
 
-// Singleton Instance
 let spiceDBServiceInstance = null;
-
 function getSpiceDBService() {
-    if (!spiceDBServiceInstance) {
-        spiceDBServiceInstance = new SpiceDBService();
-    }
+    if (!spiceDBServiceInstance) spiceDBServiceInstance = new SpiceDBService();
     return spiceDBServiceInstance;
 }
 
-module.exports = {
-    SpiceDBService,
-    getSpiceDBService
-};
+module.exports = { SpiceDBService, getSpiceDBService };

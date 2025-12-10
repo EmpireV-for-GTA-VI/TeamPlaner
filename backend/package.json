@@ -21,7 +21,7 @@
   "author": "EmpireV-for-GTA-VI",
   "license": "MIT",
   "dependencies": {
-    "@authzed/authzed-node": "^0.10.0",
+    "@authzed/authzed-node": "^1.1.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
