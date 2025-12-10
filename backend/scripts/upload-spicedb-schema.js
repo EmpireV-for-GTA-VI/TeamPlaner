@@ -22,7 +22,7 @@ async function uploadSchema() {
             token,
             endpoint,
             v1.ClientSecurity.INSECURE_PLAINTEXT_CREDENTIALS
-        );
+        ).promises;
 
         // Lese Schema
         const schemaPath = path.join(__dirname, '../spicedb/schema.zed');
@@ -33,7 +33,7 @@ async function uploadSchema() {
             schema: schema
         });
 
-        await client.schema.writeSchema(request);
+        await client.writeSchema(request);
 
         console.log('✓ SpiceDB schema uploaded successfully');
 

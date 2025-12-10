@@ -83,12 +83,8 @@ try {
     Write-Host "   ✓ Node.js gefunden: $nodeVersion" -ForegroundColor Green
     
     # Prüfe ob node_modules existiert
-    if (-not (Test-Path "node_modules")) {
-        Write-Host "   Installiere Dependencies..." -ForegroundColor Cyan
-        npm install
-    } else {
-        Write-Host "   ✓ Dependencies bereits installiert" -ForegroundColor Green
-    }
+    Write-Host "   Prüfe und installiere Dependencies..." -ForegroundColor Cyan
+    npm install
     
 } catch {
     Write-Host "   ✗ Node.js nicht gefunden!" -ForegroundColor Red
