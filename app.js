@@ -20,11 +20,24 @@ const router = createRouter({
 
 // Haupt-App-Komponente mit persistenter Navigation (Tailwind-styled)
 const App = {
+  data() {
+    return {
+      user: null,
+      authenticated: false
+    }
+  },
   template: `
     <div class="min-h-screen flex flex-col">
       <header class="bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg">
-        <div class="max-w-7xl mx-auto px-4 py-4">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
           <h1 class="text-3xl font-bold">Meine Vue-Website</h1>
+          <div v-if="authenticated" class="flex items-center gap-4">
+            <span class="text-sm">Willkommen, {{ user.cfx_name }}</span>
+            <button @click="logout" 
+              class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded text-sm transition-colors">
+              Logout
+            </button>
+          </div>
         </div>
       </header>
       
@@ -67,7 +80,24 @@ const App = {
         </div>
       </footer>
     </div>
-  `
+  `,
+  async mounted() {
+    // Prüfe beim Laden der App ob Benutzer eingeloggt ist
+    await this.checkAuth();
+  },
+  methods: {
+    async checkAuth() {
+      this.authenticated = await AuthManager.checkAuth();
+      this.user = AuthManager.getUser();
+      
+      if (!this.authenticated) {
+        AuthManager.showLoginOverlay();
+      }
+    },
+    logout() {
+      AuthManager.logout();
+    }
+  }
 }
 
 // App erstellen und mounten
