@@ -59,6 +59,14 @@ app.use(express.static(path.join(__dirname), {
 const discourseAuthRoutes = require('./routes/discourse-auth');
 app.use('/auth', discourseAuthRoutes);
 
+// FiveM Bridge Routes - Protected by Bridge Token
+const bridgeRoutes = require('./routes/bridge');
+app.use('/api/bridge', bridgeRoutes);
+
+// Profile Routes - Protected by Session Auth
+const profileRoutes = require('./routes/profile');
+app.use('/api/profile', profileRoutes);
+
 // API Routes - MIT Auth-Schutz
 const tasksRoutes = require('./routes/tasks');
 const teamMembersRoutes = require('./routes/teamMembers');

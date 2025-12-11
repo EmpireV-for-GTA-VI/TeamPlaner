@@ -6,6 +6,8 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { executeQuery } = require('../database');
+const playerManager = require('../utils/playerManager');
+const userService = require('../services/userService');
 
 // Discourse Forum URL
 const FORUM_URL = 'https://forum.cfx.re';
@@ -156,63 +158,62 @@ router.get('/callback', async (req, res) => {
             }
         });
         
-        console.log('🔍 Full User Info Response:', JSON.stringify(userInfoResponse.data, null, 2));
-        
         const currentUser = userInfoResponse.data.current_user;
         
         if (!currentUser) {
             throw new Error('No user data received from Discourse');
         }
         
-        // 9. Speichere User in Session (mit allen verfügbaren Daten)
-        req.session.user = {
-            // Basis-Daten
-            id: currentUser.id,
-            name: currentUser.username,
-            displayName: currentUser.name || currentUser.username,
-            
-            // Avatar
-            avatar: currentUser.avatar_template 
+        console.log('✓ User data fetched from Discourse:', currentUser.username);
+        
+        // 9. Speichere/Update User in Datenbank mit neuem Service
+        const dbUser = await userService.findOrCreateUser({
+            fivemId: currentUser.id.toString(),
+            username: currentUser.username,
+            avatarUrl: currentUser.avatar_template 
                 ? `${FORUM_URL}${currentUser.avatar_template.replace('{size}', '120')}`
                 : null,
+            trustLevel: currentUser.trust_level || 0,
+            isAdmin: currentUser.admin || false,
+            isModerator: currentUser.moderator || false
+        });
+        
+        if (!dbUser) {
+            throw new Error('Failed to create/update user in database');
+        }
+        
+        console.log('✓ User in DB gespeichert:', {
+            id: dbUser.id,
+            fivemId: dbUser.fivemId,
+            displayName: dbUser.displayName
+        });
+        
+        // 10. Speichere User in Session (mit DB-Daten + Discourse-Daten)
+        req.session.user = {
+            // DB User Daten
+            ...dbUser,
             
-            // Zusätzliche Discourse-Daten
-            trust_level: currentUser.trust_level,
-            admin: currentUser.admin || false,
-            moderator: currentUser.moderator || false,
-            
-            // CFX-spezifische Daten (falls vorhanden)
-            custom_fields: currentUser.custom_fields || {},
-            
-            // Auth-Daten
-            authenticated: true,
-            loginTime: new Date().toISOString(),
+            // Discourse API Daten (für spätere Requests)
             apiKey: apiKey,
             clientId: clientId,
             
-            // Alle Raw-Daten für Debug
-            _raw: currentUser
+            // Session Metadata
+            authenticated: true,
+            loginTime: new Date().toISOString(),
+            
+            // Raw Discourse Data (für Debug)
+            _discourseData: currentUser
         };
         
         console.log('✓ User Session Created:', {
-            id: req.session.user.id,
-            name: req.session.user.name,
-            admin: req.session.user.admin,
-            trust_level: req.session.user.trust_level
+            id: dbUser.id,
+            displayName: dbUser.displayName,
+            role: dbUser.role?.name,
+            organisation: dbUser.organisation?.name
         });
         
-        // 10. Lösche verwendete Nonce (One-Time-Use)
+        // 11. Lösche verwendete Nonce (One-Time-Use)
         delete req.session.nonce;
-        
-        // 11. Speichere/Update User in Datenbank
-        await executeQuery(
-            `INSERT INTO users_web (cfx_name, last_seen, connected_identifier) 
-             VALUES (?, NOW(), ?) 
-             ON DUPLICATE KEY UPDATE last_seen = NOW(), cfx_name = ?`,
-            [currentUser.username, currentUser.id.toString(), currentUser.username]
-        );
-        
-        console.log('✓ User authenticated:', currentUser.username);
         
         // 12. Redirect zum Dashboard
         res.redirect('/#/home?login=success');
@@ -237,15 +238,55 @@ router.get('/callback', async (req, res) => {
 
 /**
  * GET /auth/me
- * Gibt aktuellen authentifizierten User zurück
+ * Gibt aktuellen authentifizierten User zurück + Ingame Status
  */
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
     if (req.session && req.session.user && req.session.user.authenticated) {
-        res.json({
-            success: true,
-            authenticated: true,
-            user: req.session.user  // Gebe alle User-Daten zurück
-        });
+        try {
+            // Reload User aus DB (für aktuelle Daten)
+            const dbUser = await userService.findById(req.session.user.id);
+            
+            if (!dbUser) {
+                return res.json({
+                    success: false,
+                    authenticated: false
+                });
+            }
+            
+            // Update Session
+            req.session.user = {
+                ...req.session.user,
+                ...dbUser
+            };
+            
+            // Prüfe ob User ingame online ist
+            const isIngame = playerManager.isOnline(dbUser.fivemId);
+            const ingameData = isIngame ? playerManager.getPlayer(dbUser.fivemId) : null;
+            
+            // Update last_seen
+            await userService.updateLastSeen(dbUser.id);
+            
+            res.json({
+                success: true,
+                authenticated: true,
+                user: {
+                    ...dbUser,
+                    // Ingame Status
+                    isIngame: isIngame,
+                    ingameData: ingameData,
+                    // Entferne interne Felder
+                    _apiKey: undefined,
+                    _permissions: undefined,
+                    _discourseData: undefined
+                }
+            });
+        } catch (error) {
+            console.error('Auth check error:', error);
+            res.json({
+                success: false,
+                authenticated: false
+            });
+        }
     } else {
         res.json({ 
             success: false,
