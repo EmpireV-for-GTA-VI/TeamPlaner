@@ -60,9 +60,10 @@ async function initializeDatabase() {
             cfx_name varchar(155) DEFAULT NULL,
             last_seen datetime DEFAULT NULL,
             organisation varchar(20) DEFAULT NULL,
-            group varchar(20) DEFAULT NULL,
+            \`group\` varchar(20) DEFAULT NULL,
             role varchar(55) DEFAULT NULL,
-            connected_identifier varchar(155) DEFAULT NULL
+            connected_identifier varchar(155) DEFAULT NULL,
+            PRIMARY KEY (connected_identifier)
         )`,
         `CREATE TABLE IF NOT EXISTS projects (
             id INT AUTO_INCREMENT PRIMARY KEY,

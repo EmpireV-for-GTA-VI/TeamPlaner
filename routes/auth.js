@@ -1,64 +1,95 @@
 const express = require('express');
 const router = express.Router();
-const CFXAuth = require('../cfx-auth');
+const DiscourseUserAPI = require('../discourse-auth');
 const { executeQuery } = require('../database');
+const crypto = require('crypto');
 
-const cfxAuth = new CFXAuth(
-    process.env.CFX_CLIENT_ID,
-    process.env.CFX_CLIENT_SECRET,
-    process.env.CFX_REDIRECT_URI
-);
+const discourseAuth = new DiscourseUserAPI();
 
-// Login-Route - Leitet zum CFX OAuth weiter
+// Initialisiere Keypair beim Start
+(async () => {
+    await discourseAuth.generateKeypair();
+    console.log('✓ Discourse Keypair generiert');
+})();
+
+// Login-Route - Leitet zum CFX Forum weiter
 router.get('/login', (req, res) => {
-    const state = Math.random().toString(36).substring(7);
-    req.session.oauthState = state;
-    const authUrl = cfxAuth.getAuthorizationUrl(state);
-    res.redirect(authUrl);
+    try {
+        // Generiere State (Nonce) und Client ID
+        const nonce = crypto.randomBytes(16).toString('hex');
+        const clientId = crypto.randomBytes(48).toString('hex');
+        
+        // Speichere in Session
+        req.session.authNonce = nonce;
+        req.session.authClientId = clientId;
+        
+        // Generiere Authorization URL
+        const authUrl = discourseAuth.getAuthorizationUrl(
+            process.env.CFX_REDIRECT_URI || 'http://localhost:3000/auth/callback',
+            process.env.APPLICATION_NAME || 'TeamPlaner',
+            nonce,
+            clientId
+        );
+        
+        res.redirect(authUrl);
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ error: 'Failed to initiate login' });
+    }
 });
 
-// OAuth Callback - CFX leitet hierhin zurück
+// OAuth Callback - CFX Forum leitet hierhin zurück
 router.get('/callback', async (req, res) => {
-    const { code, state } = req.query;
+    const { payload } = req.query;
 
-    // State validieren (CSRF-Schutz)
-    if (state !== req.session.oauthState) {
-        return res.status(403).json({ error: 'Invalid state parameter' });
-    }
-
-    if (!code) {
-        return res.status(400).json({ error: 'No authorization code received' });
+    if (!payload) {
+        return res.status(400).json({ error: 'No payload received' });
     }
 
     try {
-        // Authentifizierung durchführen
-        const result = await cfxAuth.authenticate(code);
-
-        if (!result.success) {
-            return res.status(500).json({ error: 'Authentication failed', details: result.error });
+        // Entschlüssele Payload
+        const decrypted = discourseAuth.decryptPayload(payload);
+        
+        // Validiere Nonce
+        if (decrypted.nonce !== req.session.authNonce) {
+            return res.status(403).json({ error: 'Invalid nonce' });
         }
+
+        const apiKey = decrypted.key;
+        const clientId = req.session.authClientId;
+
+        // Hole Benutzerinformationen
+        const userResult = await discourseAuth.getUserInfo(apiKey, clientId);
+
+        if (!userResult.success) {
+            return res.status(500).json({ error: 'Failed to get user info', details: userResult.error });
+        }
+
+        const currentUser = userResult.data.current_user;
 
         // Benutzer in Session speichern
         req.session.user = {
-            cfx_id: result.user.sub,
-            cfx_name: result.user.name || result.user.preferred_username,
-            avatar: result.user.picture,
-            authenticated: true
+            cfx_id: currentUser.id,
+            cfx_name: currentUser.username,
+            avatar: currentUser.avatar_template,
+            authenticated: true,
+            apiKey: apiKey,
+            clientId: clientId
         };
 
         // Benutzer in Datenbank speichern/aktualisieren
         await executeQuery(
             `INSERT INTO users_web (cfx_name, last_seen, connected_identifier) 
              VALUES (?, NOW(), ?) 
-             ON DUPLICATE KEY UPDATE last_seen = NOW()`,
-            [req.session.user.cfx_name, result.user.sub]
+             ON DUPLICATE KEY UPDATE last_seen = NOW(), cfx_name = ?`,
+            [currentUser.username, currentUser.id.toString(), currentUser.username]
         );
 
         // Weiterleitung zur Hauptseite
         res.redirect('/?login=success');
     } catch (error) {
         console.error('Auth callback error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Authentication failed', details: error.message });
     }
 });
 

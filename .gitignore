@@ -7,3 +7,9 @@ node_modules/
 # Logs
 *.log
 npm-debug.log*
+
+# RSA Keypair - NIEMALS committen!
+keypair.pem
+
+# Backups
+*.backup
