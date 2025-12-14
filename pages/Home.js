@@ -39,6 +39,14 @@ const HomeComponent = {
           </div>
         </div>
         
+        <!-- Quick Actions -->
+        <div class="bg-white rounded-2xl shadow-xl p-8 mb-8">
+          <h3 class="text-2xl font-bold text-gray-800 mb-6">Schnellzugriff</h3>
+          <div class="flex flex-wrap gap-4">
+            <admin-settings></admin-settings>
+          </div>
+        </div>
+
         <div class="bg-white rounded-2xl shadow-xl p-8">
           <h3 class="text-2xl font-bold text-gray-800 mb-4">Über diese Seite</h3>
           <p class="text-gray-700 leading-relaxed mb-4">

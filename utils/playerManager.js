@@ -19,7 +19,7 @@ class PlayerManager {
             joinedAt: new Date()
         });
         
-        console.log(`✓ Player online: ${playerData.name} (FiveM ID: ${fivemId})`);
+        console.log(`✓ Player online: ${playerData.name} (FiveM ID: ${fivemId}) - Total: ${this.onlinePlayers.size}`);
     }
 
     /**

@@ -48,6 +48,8 @@ router.post('/events/join', verifyBridgeToken, (req, res) => {
     playerManager.addPlayer(fivemId, { source, name });
 
     console.log(`🎮 [FiveM Bridge] Player joined: ${name} (ID: ${fivemId}, Source: ${source})`);
+    console.log(`🔍 [FiveM Bridge] Total online players: ${playerManager.getPlayerCount()}`);
+    console.log(`🔍 [FiveM Bridge] Online FiveM IDs:`, playerManager.getAllPlayers().map(p => p.fivemId));
 
     res.json({
         success: true,

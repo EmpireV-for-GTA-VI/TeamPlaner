@@ -115,6 +115,141 @@ const ProfileComponent = {
                         </div>
                     </div>
 
+                    <!-- Avatar Settings -->
+                    <div class="bg-white rounded-lg shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-900 mb-4">Profilbild Einstellungen</h3>
+                        
+                        <div class="space-y-4">
+                            <!-- Current Avatar Preview -->
+                            <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                                <img 
+                                    v-if="user.avatarUrl" 
+                                    :src="user.avatarUrl" 
+                                    :alt="user.displayName"
+                                    class="w-20 h-20 rounded-full border-2 border-blue-500"
+                                />
+                                <div v-else class="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-bold">
+                                    {{ user.name ? user.name[0].toUpperCase() : '?' }}
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-gray-900">Aktuelles Profilbild</p>
+                                    <p class="text-sm text-gray-600">Quelle: {{ getAvatarSourceLabel(user.avatarSource) }}</p>
+                                </div>
+                            </div>
+
+                            <!-- Avatar Source Selection -->
+                            <div class="space-y-3">
+                                <p class="font-medium text-gray-700">Profilbild-Quelle wählen:</p>
+                                
+                                <!-- CFX Avatar -->
+                                <div 
+                                    @click="selectAvatarSource('cfx')"
+                                    :class="['flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all', 
+                                             user.avatarSource === 'cfx' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300']"
+                                >
+                                    <img 
+                                        v-if="user.cfxAvatar" 
+                                        :src="user.cfxAvatar" 
+                                        class="w-12 h-12 rounded-full"
+                                    />
+                                    <div class="flex-1">
+                                        <p class="font-semibold text-gray-900">CFX.re Avatar</p>
+                                        <p class="text-sm text-gray-600">Dein Avatar von forum.cfx.re</p>
+                                    </div>
+                                    <span v-if="user.avatarSource === 'cfx'" class="text-blue-600 font-bold">✓</span>
+                                </div>
+
+                                <!-- Discord Avatar -->
+                                <div 
+                                    @click="user.discord ? selectAvatarSource('discord') : null"
+                                    :class="['flex items-center gap-3 p-4 border-2 rounded-lg transition-all',
+                                             !user.discord ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
+                                             user.avatarSource === 'discord' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-purple-300']"
+                                >
+                                    <img 
+                                        v-if="user.discord?.avatar" 
+                                        :src="user.discord.avatar" 
+                                        class="w-12 h-12 rounded-full"
+                                    />
+                                    <div v-else class="w-12 h-12 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold">
+                                        D
+                                    </div>
+                                    <div class="flex-1">
+                                        <p class="font-semibold text-gray-900">Discord Avatar</p>
+                                        <p v-if="user.discord" class="text-sm text-gray-600">{{ user.discord.username }}</p>
+                                        <p v-else class="text-sm text-red-600">Nicht verknüpft</p>
+                                    </div>
+                                    <a 
+                                        v-if="!user.discord"
+                                        href="/auth/discord"
+                                        class="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm"
+                                        @click.stop
+                                    >
+                                        Discord verknüpfen
+                                    </a>
+                                    <button 
+                                        v-else-if="user.discord"
+                                        @click.stop="unlinkDiscord"
+                                        class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                                    >
+                                        Trennen
+                                    </button>
+                                    <span v-if="user.avatarSource === 'discord'" class="text-purple-600 font-bold">✓</span>
+                                </div>
+
+                                <!-- Custom Avatar -->
+                                <div 
+                                    @click="startCustomAvatar"
+                                    :class="['flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all',
+                                             user.avatarSource === 'custom' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-green-300']"
+                                >
+                                    <img 
+                                        v-if="user.customAvatar" 
+                                        :src="user.customAvatar" 
+                                        class="w-12 h-12 rounded-full object-cover"
+                                    />
+                                    <div v-else class="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white font-bold">
+                                        🖼️
+                                    </div>
+                                    <div class="flex-1">
+                                        <p class="font-semibold text-gray-900">Custom Avatar</p>
+                                        <p class="text-sm text-gray-600">Eigene Bild-URL verwenden</p>
+                                    </div>
+                                    <span v-if="user.avatarSource === 'custom'" class="text-green-600 font-bold">✓</span>
+                                </div>
+
+                                <!-- Custom Avatar URL Input -->
+                                <div v-if="editingCustomAvatar" class="p-4 bg-gray-50 rounded-lg space-y-3">
+                                    <label class="block text-sm font-medium text-gray-700">Bild-URL eingeben:</label>
+                                    <input 
+                                        v-model="customAvatarUrl"
+                                        type="url"
+                                        placeholder="https://example.com/avatar.png"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500"
+                                        :disabled="avatarSaving"
+                                    />
+                                    <p v-if="avatarError" class="text-red-600 text-sm">{{ avatarError }}</p>
+                                    <div class="flex gap-2">
+                                        <button 
+                                            @click="saveCustomAvatar"
+                                            :disabled="avatarSaving || !customAvatarUrl"
+                                            class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400"
+                                        >
+                                            {{ avatarSaving ? 'Speichern...' : 'Speichern' }}
+                                        </button>
+                                        <button 
+                                            @click="cancelCustomAvatar"
+                                            :disabled="avatarSaving"
+                                            class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                                        >
+                                            Abbrechen
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Organisation/Group/Role -->
                     <div class="bg-white rounded-lg shadow-lg p-6">
                         <h3 class="text-xl font-bold text-gray-900 mb-4">Rechte & Zugehörigkeit</h3>
@@ -217,7 +352,15 @@ const ProfileComponent = {
         return {
             user: null,
             loading: true,
-            error: null
+            error: null,
+            editingUsername: false,
+            newUsername: '',
+            usernameSaving: false,
+            usernameError: null,
+            editingCustomAvatar: false,
+            customAvatarUrl: '',
+            avatarSaving: false,
+            avatarError: null
         };
     },
     computed: {
@@ -251,6 +394,16 @@ const ProfileComponent = {
                 }
 
                 this.user = data.user;
+
+                // Update globalen App State (reaktiv)
+                if (window.appState && window.appState.user) {
+                    Object.assign(window.appState.user, {
+                        avatar: data.user.avatarUrl,
+                        avatarUrl: data.user.avatarUrl,
+                        name: data.user.displayName,
+                        displayName: data.user.displayName
+                    });
+                }
 
             } catch (error) {
                 console.error('Load profile error:', error);
@@ -320,6 +473,155 @@ const ProfileComponent = {
                 return JSON.parse(permissionsJson);
             } catch (e) {
                 return [];
+            }
+        },
+
+        getAvatarSourceLabel(source) {
+            const labels = {
+                'cfx': 'CFX.re',
+                'discord': 'Discord',
+                'custom': 'Eigenes Bild'
+            };
+            return labels[source] || 'Unbekannt';
+        },
+
+        async selectAvatarSource(source) {
+            if (this.avatarSaving) return;
+            
+            this.avatarSaving = true;
+            this.avatarError = null;
+
+            try {
+                const response = await fetch('/api/profile/avatar', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ source })
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Fehler beim Ändern des Avatars');
+                }
+
+                // Update local user data
+                this.user.avatarUrl = data.user.avatarUrl;
+                this.user.avatarSource = data.user.avatarSource;
+                this.user.avatar = data.user.avatarUrl; // Für Header-Komponente
+
+                // Update globalen App State (reaktiv)
+                if (window.appState && window.appState.user) {
+                    Object.assign(window.appState.user, {
+                        avatar: data.user.avatarUrl,
+                        avatarUrl: data.user.avatarUrl
+                    });
+                }
+
+            } catch (error) {
+                console.error('Avatar source change error:', error);
+                this.avatarError = error.message;
+            } finally {
+                this.avatarSaving = false;
+            }
+        },
+
+        startCustomAvatar() {
+            this.editingCustomAvatar = true;
+            this.customAvatarUrl = this.user.customAvatar || '';
+            this.avatarError = null;
+        },
+
+        cancelCustomAvatar() {
+            this.editingCustomAvatar = false;
+            this.customAvatarUrl = '';
+            this.avatarError = null;
+        },
+
+        async saveCustomAvatar() {
+            if (!this.customAvatarUrl) {
+                this.avatarError = 'Bitte gib eine URL ein';
+                return;
+            }
+
+            if (!this.customAvatarUrl.startsWith('http')) {
+                this.avatarError = 'URL muss mit http:// oder https:// beginnen';
+                return;
+            }
+
+            this.avatarSaving = true;
+            this.avatarError = null;
+
+            try {
+                const response = await fetch('/api/profile/avatar', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        source: 'custom',
+                        customUrl: this.customAvatarUrl
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Fehler beim Speichern des Avatars');
+                }
+
+                // Update local user data
+                this.user.avatarUrl = data.user.avatarUrl;
+                this.user.avatarSource = data.user.avatarSource;
+                this.user.customAvatar = this.customAvatarUrl;
+                this.user.avatar = data.user.avatarUrl; // Für Header-Komponente
+
+                // Update globalen App State (reaktiv)
+                if (window.appState && window.appState.user) {
+                    Object.assign(window.appState.user, {
+                        avatar: data.user.avatarUrl,
+                        avatarUrl: data.user.avatarUrl
+                    });
+                }
+
+                // Close edit mode
+                this.editingCustomAvatar = false;
+                this.customAvatarUrl = '';
+
+            } catch (error) {
+                console.error('Custom avatar save error:', error);
+                this.avatarError = error.message;
+            } finally {
+                this.avatarSaving = false;
+            }
+        },
+
+        async unlinkDiscord() {
+            if (!confirm('Möchtest du Discord wirklich trennen?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/auth/discord/unlink', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Fehler beim Trennen von Discord');
+                }
+
+                // Reload profile
+                await this.loadProfile();
+
+            } catch (error) {
+                console.error('Discord unlink error:', error);
+                alert('Fehler: ' + error.message);
             }
         },
 

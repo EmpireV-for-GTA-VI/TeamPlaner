@@ -196,6 +196,93 @@ class UserService {
     }
     
     /**
+     * Link Discord Account
+     */
+    async linkDiscord(userId, discordData) {
+        const { discordId, discordUsername, discordAvatar, accessToken, refreshToken } = discordData;
+        
+        // Prüfe ob Discord ID bereits verwendet wird
+        const existing = await executeQuery(`
+            SELECT id FROM users WHERE discord_id = ? AND id != ?
+        `, [discordId, userId]);
+        
+        if (existing.success && existing.data && existing.data.length > 0) {
+            throw new Error('Discord account is already linked to another user');
+        }
+        
+        // Update User
+        const result = await executeQuery(`
+            UPDATE users 
+            SET 
+                discord_id = ?,
+                discord_username = ?,
+                discord_avatar = ?,
+                discord_access_token = ?,
+                discord_refresh_token = ?,
+                discord_linked_at = NOW()
+            WHERE id = ?
+        `, [discordId, discordUsername, discordAvatar, accessToken, refreshToken, userId]);
+        
+        return result.success;
+    }
+    
+    /**
+     * Unlink Discord Account
+     */
+    async unlinkDiscord(userId) {
+        const result = await executeQuery(`
+            UPDATE users 
+            SET 
+                discord_id = NULL,
+                discord_username = NULL,
+                discord_avatar = NULL,
+                discord_access_token = NULL,
+                discord_refresh_token = NULL,
+                discord_linked_at = NULL,
+                avatar_source = 'cfx'
+            WHERE id = ?
+        `, [userId]);
+        
+        return result.success;
+    }
+    
+    /**
+     * Update Avatar Source
+     */
+    async updateAvatarSource(userId, source, customUrl = null) {
+        if (!['cfx', 'discord', 'custom'].includes(source)) {
+            throw new Error('Invalid avatar source');
+        }
+        
+        let query = `UPDATE users SET avatar_source = ?`;
+        let params = [source];
+        
+        if (source === 'custom' && customUrl) {
+            query += `, custom_avatar_url = ?`;
+            params.push(customUrl);
+        }
+        
+        query += ` WHERE id = ?`;
+        params.push(userId);
+        
+        const result = await executeQuery(query, params);
+        return result.success;
+    }
+    
+    /**
+     * Get Discord Avatar URL
+     */
+    getDiscordAvatarUrl(discordId, discordAvatar) {
+        if (!discordId || !discordAvatar) {
+            return null;
+        }
+        
+        // Discord CDN URL
+        const ext = discordAvatar.startsWith('a_') ? 'gif' : 'png';
+        return `https://cdn.discordapp.com/avatars/${discordId}/${discordAvatar}.${ext}?size=256`;
+    }
+    
+    /**
      * Prüfe ob User Permission hat
      */
     hasPermission(user, permission) {
@@ -241,13 +328,35 @@ class UserService {
      * Formatiere User-Objekt für Response
      */
     formatUser(dbUser) {
+        // Bestimme aktuellen Avatar basierend auf avatar_source
+        let currentAvatar = dbUser.avatar_url; // CFX Default
+        
+        if (dbUser.avatar_source === 'discord' && dbUser.discord_id && dbUser.discord_avatar) {
+            currentAvatar = this.getDiscordAvatarUrl(dbUser.discord_id, dbUser.discord_avatar);
+        } else if (dbUser.avatar_source === 'custom' && dbUser.custom_avatar_url) {
+            currentAvatar = dbUser.custom_avatar_url;
+        }
+        
         return {
             id: dbUser.id,
             fivemId: dbUser.fivem_id,
             cfxUsername: dbUser.cfx_username,
             customUsername: dbUser.custom_username,
             displayName: dbUser.display_name,
-            avatarUrl: dbUser.avatar_url,
+            avatarUrl: currentAvatar,
+            
+            // Discord Info
+            discord: dbUser.discord_id ? {
+                id: dbUser.discord_id,
+                username: dbUser.discord_username,
+                avatar: this.getDiscordAvatarUrl(dbUser.discord_id, dbUser.discord_avatar),
+                linkedAt: dbUser.discord_linked_at
+            } : null,
+            
+            // Avatar Sources
+            avatarSource: dbUser.avatar_source,
+            cfxAvatar: dbUser.avatar_url,
+            customAvatar: dbUser.custom_avatar_url,
             
             // Rechte
             organisation: dbUser.organisation_id ? {

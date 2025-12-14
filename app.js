@@ -3,11 +3,15 @@ const { createApp } = Vue;
 const { createRouter, createWebHashHistory } = VueRouter;
 
 // ==================== GLOBALER STATE ====================
-const appState = {
+// Verwende Vue's reactive für bessere Reaktivität
+const appState = Vue.reactive({
     user: null,
     authenticated: false,
     loading: true
-};
+});
+
+// Mache appState global verfügbar
+window.appState = appState;
 
 // ==================== ROUTER KONFIGURATION ====================
 const routes = [
@@ -61,6 +65,16 @@ const routes = [
     { 
         path: '/profile', 
         component: ProfileComponent,
+        meta: { requiresAuth: true }
+    },
+    { 
+        path: '/console', 
+        component: ServerConsoleComponent,
+        meta: { requiresAuth: true }
+    },
+    { 
+        path: '/tasks', 
+        component: TaskPlannerComponent,
         meta: { requiresAuth: true }
     }
 ];
@@ -129,11 +143,10 @@ const App = {
             this.loading = appState.loading;
         }
     },
-    
     template: `
-        <div class="min-h-screen flex flex-col">
+        <div class="h-screen flex flex-col bg-gradient-to-b from-gray-900 to-gray-700">
             <!-- Loading Screen -->
-            <div v-if="loading" class="min-h-screen flex items-center justify-center bg-gray-100">
+            <div v-if="loading" class="min-h-screen flex items-center justify-center bg-gray-900">
                 <div class="text-center">
                     <svg class="animate-spin h-12 w-12 text-blue-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -146,7 +159,7 @@ const App = {
             <!-- Authenticated Layout -->
             <template v-else-if="authenticated">
                 <!-- Header -->
-                <header class="bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg">
+                <header class="bg-[radial-gradient(900px_450px_at_20%_0%,rgba(147,51,234,1),transparent_60%),radial-gradient(900px_450px_at_20%_0%,rgba(92,125,255,0.35),transparent_60%),radial-gradient(900px_450px_at_80%_0%,rgba(201,92,255,0.22),transparent_60%),linear-gradient(90deg,rgba(79,70,229,1)_0%,rgba(124,58,237,1)_25%,rgba(172,89,246,1)_50%,rgba(162,44,152,1)_75%,rgba(147,51,234,1)_100%)] text-white shadow-lg">
                     <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
                         <h1 class="text-3xl font-bold">TeamPlaner</h1>
                         <div class="flex items-center gap-4">
@@ -188,26 +201,23 @@ const App = {
                                     class="px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors rounded-t-lg">
                                     Dokumentation
                                 </router-link>
-                            </div>
-                            <div class="py-2">
-                                <task-planner></task-planner>
+                                <router-link v-if="user?.organisation?.id === 2" to="/tasks" 
+                                    class="px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors rounded-t-lg">
+                                    📋 Aufgaben
+                                </router-link>
+                                <router-link v-if="user?.group?.name === 'Developer' || user?.group?.name === 'Projektleitung'" to="/console" 
+                                    class="px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors rounded-t-lg">
+                                    🖥️ Konsole
+                                </router-link>
                             </div>
                         </div>
                     </div>
                 </nav>
                 
                 <!-- Main Content -->
-                <main class="flex-grow">
+                <main :class="$route.path === '/tasks' ? 'flex-grow overflow-hidden' : 'flex-grow overflow-y-auto'">
                     <router-view />
                 </main>
-                
-                <!-- Footer -->
-                <footer class="bg-gray-800 text-white mt-auto">
-                    <div class="max-w-7xl mx-auto px-4 py-6 text-center">
-                        <p>&copy; 2025 TeamPlaner. Alle Rechte vorbehalten.</p>
-                        <p class="text-sm text-gray-400 mt-1">Powered by CFX.re OAuth2</p>
-                    </div>
-                </footer>
             </template>
 
             <!-- Public Layout (Login) -->
@@ -258,5 +268,7 @@ const App = {
 // ==================== APP ERSTELLEN UND MOUNTEN ====================
 const app = createApp(App);
 app.component('task-planner', TaskPlannerComponent);
+app.component('admin-settings', AdminSettingsComponent);
+app.component('server-console', ServerConsoleComponent);
 app.use(router);
 app.mount('#app');

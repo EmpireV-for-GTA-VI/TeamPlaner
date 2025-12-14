@@ -183,6 +183,192 @@ async function initializeDatabase() {
             
             FOREIGN KEY (organisation_id) REFERENCES organisations(id) ON DELETE SET NULL,
             FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+        
+        // ==================== BOARDS TABELLE ====================
+        `CREATE TABLE IF NOT EXISTS boards (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(200) NOT NULL,
+            description TEXT,
+            icon VARCHAR(50) DEFAULT '📋',
+            color VARCHAR(7) DEFAULT '#3B82F6',
+            position INT DEFAULT 0,
+            
+            organisation_id INT DEFAULT NULL,
+            created_by INT DEFAULT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            
+            INDEX idx_organisation (organisation_id),
+            INDEX idx_position (position),
+            
+            FOREIGN KEY (organisation_id) REFERENCES organisations(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+        
+        // ==================== CATEGORIES TABELLE ====================
+        `CREATE TABLE IF NOT EXISTS categories (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            board_id INT NOT NULL,
+            name VARCHAR(200) NOT NULL,
+            position INT DEFAULT 0,
+            color VARCHAR(7) DEFAULT '#6B7280',
+            
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            
+            INDEX idx_board (board_id),
+            INDEX idx_position (position),
+            
+            FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+        
+        // ==================== CARDS TABELLE ====================
+        `CREATE TABLE IF NOT EXISTS cards (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            category_id INT NOT NULL,
+            board_id INT NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            description TEXT,
+            position INT DEFAULT 0,
+            
+            created_by INT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            
+            INDEX idx_category (category_id),
+            INDEX idx_board (board_id),
+            INDEX idx_position (position),
+            
+            FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+            FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+        
+        // ==================== TAGS TABELLE ====================
+        `CREATE TABLE IF NOT EXISTS tags (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            board_id INT NOT NULL,
+            name VARCHAR(100) NOT NULL,
+            color VARCHAR(7) DEFAULT '#3B82F6',
+            
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            
+            INDEX idx_board (board_id),
+            UNIQUE KEY unique_board_tag (board_id, name),
+            
+            FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+        
+        // ==================== CARD_TAGS TABELLE (Many-to-Many) ====================
+        `CREATE TABLE IF NOT EXISTS card_tags (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            card_id INT NOT NULL,
+            tag_id INT NOT NULL,
+            
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            
+            INDEX idx_card (card_id),
+            INDEX idx_tag (tag_id),
+            UNIQUE KEY unique_card_tag (card_id, tag_id),
+            
+            FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+            FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+        
+        // ==================== CARD_ASSIGNMENTS TABELLE (Many-to-Many) ====================
+        `CREATE TABLE IF NOT EXISTS card_assignments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            card_id INT NOT NULL,
+            user_id INT NOT NULL,
+            
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            
+            INDEX idx_card (card_id),
+            INDEX idx_user (user_id),
+            UNIQUE KEY unique_card_user (card_id, user_id),
+            
+            FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+        
+        // ==================== CARD_MEDIA TABELLE ====================
+        `CREATE TABLE IF NOT EXISTS card_media (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            card_id INT NOT NULL,
+            type ENUM('image', 'video') NOT NULL,
+            url VARCHAR(500) NOT NULL,
+            filename VARCHAR(255),
+            size INT DEFAULT 0,
+            
+            uploaded_by INT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            
+            INDEX idx_card (card_id),
+            
+            FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+            FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+        
+        // ==================== SUBTASKS TABELLE ====================
+        `CREATE TABLE IF NOT EXISTS subtasks (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            card_id INT NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            is_completed BOOLEAN DEFAULT FALSE,
+            position INT DEFAULT 0,
+            
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            
+            INDEX idx_card (card_id),
+            INDEX idx_position (position),
+            
+            FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+        
+        // ==================== BOARD_PERMISSIONS TABELLE ====================
+        `CREATE TABLE IF NOT EXISTS board_permissions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            board_id INT NOT NULL,
+            organisation_id INT DEFAULT 2 COMMENT 'Immer Team (ID=2)',
+            
+            -- Ziel (entweder group_id ODER role_id ODER user_id)
+            group_id INT DEFAULT NULL,
+            role_id INT DEFAULT NULL,
+            user_id INT DEFAULT NULL,
+            
+            -- Granulare Berechtigungen (Flags)
+            can_view BOOLEAN DEFAULT TRUE,
+            can_create_card BOOLEAN DEFAULT FALSE,
+            can_edit_card BOOLEAN DEFAULT FALSE,
+            can_delete_card BOOLEAN DEFAULT FALSE,
+            can_move_card BOOLEAN DEFAULT FALSE,
+            can_create_category BOOLEAN DEFAULT FALSE,
+            can_edit_category BOOLEAN DEFAULT FALSE,
+            can_delete_category BOOLEAN DEFAULT FALSE,
+            can_manage_permissions BOOLEAN DEFAULT FALSE,
+            
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            
+            INDEX idx_board (board_id),
+            INDEX idx_group (group_id),
+            INDEX idx_role (role_id),
+            INDEX idx_user (user_id),
+            
+            FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
+            FOREIGN KEY (organisation_id) REFERENCES organisations(id) ON DELETE CASCADE,
+            FOREIGN KEY (group_id) REFERENCES \`groups\`(id) ON DELETE CASCADE,
+            FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            
+            -- Nur eines der Ziele darf gesetzt sein
+            CHECK ((group_id IS NOT NULL AND role_id IS NULL AND user_id IS NULL) OR
+                   (group_id IS NULL AND role_id IS NOT NULL AND user_id IS NULL) OR
+                   (group_id IS NULL AND role_id IS NULL AND user_id IS NOT NULL))
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     ];
 
@@ -193,7 +379,16 @@ async function initializeDatabase() {
         queries[3], // roles (FK zu groups)
         queries[0], // users (FK zu organisations, groups, roles)
         queries[4], // tasks (FK zu users, organisations, groups)
-        queries[5]  // projects (FK zu organisations, users)
+        queries[5], // projects (FK zu organisations, users)
+        queries[6], // boards (FK zu organisations, users)
+        queries[7], // categories (FK zu boards)
+        queries[8], // cards (FK zu categories, boards, users)
+        queries[9], // tags (FK zu boards)
+        queries[10], // card_tags (FK zu cards, tags)
+        queries[11], // card_assignments (FK zu cards, users)
+        queries[12], // card_media (FK zu cards, users)
+        queries[13], // subtasks (FK zu cards)
+        queries[14]  // board_permissions (FK zu boards, organisations, groups, roles, users)
     ];
 
     for (const query of orderedQueries) {
@@ -202,6 +397,14 @@ async function initializeDatabase() {
             console.error('Failed to create table:', result.error);
         }
     }
+    
+    // ==================== MIGRATIONS ====================
+    // Füge position Spalte zu boards hinzu, falls nicht vorhanden
+    await executeQuery(`
+        ALTER TABLE boards 
+        ADD COLUMN IF NOT EXISTS position INT DEFAULT 0,
+        ADD INDEX IF NOT EXISTS idx_position (position)
+    `);
     
     // Standard-Daten erstellen (falls nicht vorhanden)
     await seedDefaultData();

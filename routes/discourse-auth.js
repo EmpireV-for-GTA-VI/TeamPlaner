@@ -263,6 +263,13 @@ router.get('/me', async (req, res) => {
             const isIngame = playerManager.isOnline(dbUser.fivemId);
             const ingameData = isIngame ? playerManager.getPlayer(dbUser.fivemId) : null;
             
+            // Debug Logging
+            console.log('🔍 Ingame Status Check:', {
+                fivemId: dbUser.fivemId,
+                isIngame: isIngame,
+                onlinePlayers: playerManager.getAllPlayers().map(p => p.fivemId)
+            });
+            
             // Update last_seen
             await userService.updateLastSeen(dbUser.id);
             
@@ -271,6 +278,9 @@ router.get('/me', async (req, res) => {
                 authenticated: true,
                 user: {
                     ...dbUser,
+                    // Alias für Kompatibilität
+                    avatar: dbUser.avatarUrl,
+                    name: dbUser.displayName,
                     // Ingame Status
                     isIngame: isIngame,
                     ingameData: ingameData,

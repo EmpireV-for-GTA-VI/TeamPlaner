@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const userService = require('../services/userService');
+const playerManager = require('../utils/playerManager');
 
 /**
  * Middleware: Require Authentication
@@ -61,10 +62,17 @@ router.get('/', requireAuth, async (req, res) => {
             ...user
         };
         
+        // Prüfe Ingame-Status
+        const isIngame = playerManager.isOnline(user.fivemId);
+        const ingameData = isIngame ? playerManager.getPlayer(user.fivemId) : null;
+        
         res.json({
             success: true,
             user: {
                 ...user,
+                // Ingame Status hinzufügen
+                isIngame: isIngame,
+                ingameData: ingameData,
                 // Entferne interne Felder
                 _apiKey: undefined,
                 _permissions: undefined,
@@ -194,6 +202,74 @@ router.get('/permissions', requireAuth, async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Failed to fetch permissions'
+        });
+    }
+});
+
+/**
+ * PUT /api/profile/avatar
+ * Avatar-Quelle ändern
+ */
+router.put('/avatar', requireAuth, async (req, res) => {
+    try {
+        const { source, customUrl } = req.body;
+        
+        if (!source || !['cfx', 'discord', 'custom'].includes(source)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid avatar source. Must be: cfx, discord, or custom'
+            });
+        }
+        
+        const userId = req.session.user.id;
+        
+        // Prüfe ob Discord verknüpft ist
+        if (source === 'discord') {
+            const user = await userService.findById(userId);
+            if (!user.discord) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Discord account not linked. Please link Discord first.'
+                });
+            }
+        }
+        
+        // Validiere Custom URL
+        if (source === 'custom') {
+            if (!customUrl || !customUrl.startsWith('http')) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Valid custom avatar URL is required'
+                });
+            }
+        }
+        
+        // Update Avatar Source
+        await userService.updateAvatarSource(userId, source, customUrl);
+        
+        // Reload User
+        const updatedUser = await userService.findById(userId);
+        
+        // Update Session
+        req.session.user = {
+            ...req.session.user,
+            ...updatedUser
+        };
+        
+        res.json({
+            success: true,
+            message: 'Avatar source updated successfully',
+            user: {
+                avatarUrl: updatedUser.avatarUrl,
+                avatarSource: updatedUser.avatarSource
+            }
+        });
+        
+    } catch (error) {
+        console.error('Avatar update error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
         });
     }
 });
